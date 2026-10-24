@@ -86,18 +86,32 @@ def render(info: VideoInfo, *, by_index, analysis, n_frames: int, fps: float, ds
     arc = max(4, round(cfg.ELBOW_ARC_RADIUS * scale))
     stroke = max(1, round(2 * scale))
 
-    cap = cv2.VideoCapture(str(info.path))
-    writer = cv2.VideoWriter(str(dst), cv2.VideoWriter_fourcc(*"mp4v"), info.fps,
-                             (out_w, info.height))
-    if not writer.isOpened():
-        cap.release()
-        raise RuntimeError(f"OpenCV could not open a writer for {dst}")
+    show = getattr(cfg, "SHOW_WINDOW", True)
+    save = getattr(cfg, "SAVE_VIDEO", False) and dst is not None
 
+    cap = cv2.VideoCapture(str(info.path))
+    writer = None
+    if save:
+        writer = cv2.VideoWriter(str(dst), cv2.VideoWriter_fourcc(*"mp4v"), info.fps,
+                                 (out_w, info.height))
+        if not writer.isOpened():
+            cap.release()
+            raise RuntimeError(f"OpenCV could not open a writer for {dst}")
+
+    window_name = "Motion-Lens: Pull-Ups (Space: Pause/Play, Q: Quit)"
+    if show:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        win_w = getattr(cfg, "WINDOW_WIDTH", 1280)
+        win_h = max(240, int(win_w * info.height / out_w))
+        cv2.resizeWindow(window_name, win_w, win_h)
+
+    delay_ms = max(1, int(1000 / info.fps))
     limit = min(info.n_frames, n_frames)
     written = posed = 0
+    task_name = "displaying" if show and not save else "rendering"
     try:
         with Progress(*_PROGRESS_COLUMNS, console=console, transient=True) as progress:
-            task = progress.add_task("render", total=limit)
+            task = progress.add_task(task_name, total=limit)
             for i in range(limit):
                 ok, frame = cap.read()
                 if not ok:
@@ -115,14 +129,34 @@ def render(info: VideoInfo, *, by_index, analysis, n_frames: int, fps: float, ds
                                      stroke=stroke, color=cfg.ELBOW_ARC_COLOR)
                     posed += 1
 
-                writer.write(np.hstack([frame, panel.render(i)]))
-                written += 1
+                combined = np.hstack([frame, panel.render(i)])
+                if writer is not None:
+                    writer.write(combined)
+                    written += 1
+
+                if show:
+                    cv2.imshow(window_name, combined)
+                    key = cv2.waitKey(delay_ms) & 0xFF
+                    if key == ord(' '):  # Paused
+                        while True:
+                            k2 = cv2.waitKey(50) & 0xFF
+                            if k2 in (ord(' '), ord('q'), 27):
+                                key = k2
+                                break
+                    if key in (ord('q'), 27):
+                        console.print("  [yellow]playback closed by user[/]")
+                        break
+
                 progress.update(task, advance=1)
     finally:
         cap.release()
-        writer.release()
+        if writer is not None:
+            writer.release()
+        if show:
+            cv2.destroyAllWindows()
+
     return {"frames_written": written, "frames_with_pose": posed,
-            "output": f"{out_w}x{info.height}"}
+            "output": f"{out_w}x{info.height}", "saved": save}
 
 
 def plot_timeline(analysis, dst: Path, *, cfg, title: str = "") -> None:

@@ -170,7 +170,10 @@ CREDIT_LINE_GAP = 6                   # px between credit lines
 CREDIT_MARGIN = 25                    # inset from the right and bottom edges
 CREDIT_COLOR = (180, 180, 180)        # BGR
 CREDIT_LABEL_COLOR = (120, 120, 120)  # the "LI:" / "X:" part
-OUTPUT_CRF = 20                       # x264 quality of the rendered video
+# ── Display and Saving ───────────────────────────────────────────────────────
+SHOW_WINDOW = True         # True opens real-time interactive preview window (cv2.imshow)
+SAVE_VIDEO = False         # False avoids saving heavy rendered MP4 to disk
+WINDOW_WIDTH = 1280        # Window display width in pixels (scaled proportionally)
 
 # ── Output ───────────────────────────────────────────────────────────────────
 OUTPUT_DIR = DATA_DIR / "output"

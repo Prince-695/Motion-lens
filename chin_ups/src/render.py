@@ -59,21 +59,36 @@ def render(
         out_w = info.width * 2
         console.print(f"  side panel: {len(panels)} states, output {out_w}x{info.height}")
 
-    cap = cv2.VideoCapture(str(info.path))
-    writer = cv2.VideoWriter(
-        str(dst), cv2.VideoWriter_fourcc(*"mp4v"), info.fps, (out_w, info.height)
-    )
-    if not writer.isOpened():
-        cap.release()
-        raise RuntimeError(f"OpenCV could not open a writer for {dst}")
+    show = getattr(cfg, "SHOW_WINDOW", True)
+    save = getattr(cfg, "SAVE_VIDEO", False) and dst is not None
 
+    cap = cv2.VideoCapture(str(info.path))
+    writer = None
+    if save:
+        writer = cv2.VideoWriter(
+            str(dst), cv2.VideoWriter_fourcc(*"mp4v"), info.fps, (out_w, info.height)
+        )
+        if not writer.isOpened():
+            cap.release()
+            raise RuntimeError(f"OpenCV could not open a writer for {dst}")
+
+    window_name = "Motion-Lens: Chin-Ups (Space: Pause/Play, Q: Quit)"
+    if show:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        win_w = getattr(cfg, "WINDOW_WIDTH", 1280)
+        win_h = max(240, int(win_w * info.height / out_w))
+        cv2.resizeWindow(window_name, win_w, win_h)
+
+    delay_ms = max(1, int(1000 / info.fps))
+    task_name = "displaying" if show and not save else "render"
     last_persons: list[dict] | None = None
     held_for = 0
     n_drawn = n_held = n_people = 0
+    written = 0
 
     try:
         with Progress(*_PROGRESS_COLUMNS, console=console, transient=True) as progress:
-            task = progress.add_task("render", total=info.n_frames)
+            task = progress.add_task(task_name, total=info.n_frames)
             for i in range(info.n_frames):
                 ok, frame = cap.read()
                 if not ok:
@@ -110,18 +125,38 @@ def render(
                 if panels is not None:
                     frame = np.hstack([frame, panels[min(analysis.count_at(i), len(panels) - 1)]])
 
-                writer.write(frame)
+                if writer is not None:
+                    writer.write(frame)
+                    written += 1
+
+                if show:
+                    cv2.imshow(window_name, frame)
+                    key = cv2.waitKey(delay_ms) & 0xFF
+                    if key == ord(' '):  # Paused
+                        while True:
+                            k2 = cv2.waitKey(50) & 0xFF
+                            if k2 in (ord(' '), ord('q'), 27):
+                                key = k2
+                                break
+                    if key in (ord('q'), 27):
+                        console.print("  [yellow]playback closed by user[/]")
+                        break
+
                 progress.update(task, advance=1)
     finally:
         cap.release()
-        writer.release()
+        if writer is not None:
+            writer.release()
+        if show:
+            cv2.destroyAllWindows()
 
     return {
-        "frames_written": info.n_frames,
+        "frames_written": written,
         "frames_with_pose": n_drawn,
         "frames_held": n_held,
         "mean_people_per_posed_frame": round(n_people / n_drawn, 2) if n_drawn else 0.0,
         "hold_limit": hold_limit,
+        "saved": save,
     }
 
 

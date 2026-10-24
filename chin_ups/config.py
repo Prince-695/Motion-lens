@@ -45,6 +45,9 @@ DRAW_HUD = False              # the frame/person counter in the top-left
 LINE_THICKNESS = 3            # px at a 720px-wide frame; scales with the export
 POINT_RADIUS = 4
 OUTPUT_CRF = 20
+SHOW_WINDOW = True         # True opens real-time interactive preview window (cv2.imshow)
+SAVE_VIDEO = False         # False avoids saving heavy rendered MP4 to disk
+WINDOW_WIDTH = 1280        # Window display width in pixels (scaled proportionally)
 
 # ── Rep counting ─────────────────────────────────────────────────────────────
 # The signal is `hand_y - torso_y`; see rep-counting-explained.md for the method.

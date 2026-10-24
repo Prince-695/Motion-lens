@@ -9,8 +9,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
+
+os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.*=false;*.warning=false")
+os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -68,6 +72,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="use cloud VLM Run gateway instead of local model")
     parser.add_argument("--local", action="store_true",
                         help="use local offline YOLOv8-pose model (default)")
+    parser.add_argument("--show", dest="show", action="store_true", default=None,
+                        help="show interactive real-time window playback (default: True)")
+    parser.add_argument("--no-show", dest="show", action="store_false",
+                        help="run headless without displaying window")
+    parser.add_argument("--save", dest="save_video", action="store_true", default=None,
+                        help="save rendered MP4 to disk")
+    parser.add_argument("--no-save", dest="save_video", action="store_false",
+                        help="skip saving rendered MP4 to disk (default)")
     credit = parser.add_argument_group(
         "credit", "the lines in the corner; any of these replaces config.py's CREDIT")
     credit.add_argument("--li", metavar="TEXT", help='LinkedIn, e.g. "Jeremy Park, PhD"')
@@ -83,6 +95,10 @@ def apply_args(args: argparse.Namespace) -> None:
         cfg.BACKEND = "gateway"
     elif args.local:
         cfg.BACKEND = "local"
+    if args.show is not None:
+        cfg.SHOW_WINDOW = args.show
+    if args.save_video is not None:
+        cfg.SAVE_VIDEO = args.save_video
     if args.video:
         cfg.INPUT_VIDEO = args.video.expanduser().resolve()
     if args.height:
@@ -342,12 +358,17 @@ def main(argv: list[str] | None = None) -> int:
                   f"frames" + (f" ({stats['frames_held']} held)" if stats["frames_held"] else ""))
 
     out_video = run_dir / f"{cfg.INPUT_VIDEO.stem}_pose.mp4"
-    t0 = time.perf_counter()
-    video.encode_h264(raw, out_video, crf=cfg.OUTPUT_CRF)
-    encode_seconds = time.perf_counter() - t0
-    raw.unlink(missing_ok=True)   # MPEG-4 Part 2 intermediate; no player wants it
-    console.print(f"  video  -> [dim]{rel(out_video)}[/] "
-                  f"({out_video.stat().st_size / 1e6:.1f} MB)")
+    if stats.get("saved") and raw.is_file():
+        t0 = time.perf_counter()
+        video.encode_h264(raw, out_video, crf=cfg.OUTPUT_CRF)
+        encode_seconds = time.perf_counter() - t0
+        raw.unlink(missing_ok=True)   # MPEG-4 Part 2 intermediate; no player wants it
+        console.print(f"  video  -> [dim]{rel(out_video)}[/] "
+                      f"({out_video.stat().st_size / 1e6:.1f} MB)")
+    else:
+        encode_seconds = 0.0
+        raw.unlink(missing_ok=True)
+        console.print("  video  -> [green]displayed in real-time window[/] [dim](pass --save to also save MP4)[/]")
 
     disp_path = None
     if analysis is not None:
